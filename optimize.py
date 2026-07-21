@@ -3,18 +3,19 @@ import sys
 import tarfile
 import urllib.request
 import csv
+import json
 
-# 定义一个带 User-Agent 的安全下载函数，防止 GitHub 拦截并报 404/403 错误
+# 带 User-Agent 的安全下载函数
 def download_file(url, filename):
-    print(f"开始下载: {url}")
+    print(f"正在从以下地址下载: {url}")
     req = urllib.request.Request(
         url,
         headers={
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
     )
     try:
-        with urllib.request.urlopen(req) as response, open(filename, 'wb') as out_file:
+        with urllib.request.urlopen(req, timeout=15) as response, open(filename, 'wb') as out_file:
             block_size = 1024 * 8
             while True:
                 buffer = response.read(block_size)
@@ -23,19 +24,49 @@ def download_file(url, filename):
                 out_file.write(buffer)
         print(f"下载成功: {filename}")
     except Exception as e:
-        print(f"下载失败: {e}")
+        print(f"下载写入文件失败: {e}")
         raise e
 
-# 1. 下载 CloudflareSpeedTest 测速工具 (Linux Amd64 版本)
-print("正在下载 CloudflareSpeedTest...")
-cf_url = "https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/CloudflareSpeedTest_linux_amd64.tar.gz"
+# 动态获取最新下载链接，如果失败则回退到稳定版
+def get_download_url():
+    # 策略 A：通过 GitHub API 动态获取最新版的 browser_download_url
+    api_url = "https://api.github.com/repos/XIU2/CloudflareSpeedTest/releases/latest"
+    print("正在尝试通过 GitHub API 动态获取最新版本链接...")
+    req = urllib.request.Request(
+        api_url,
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            assets = res_data.get('assets', [])
+            for asset in assets:
+                asset_name = asset.get('name', '')
+                if 'linux' in asset_name and 'amd64' in asset_name and asset_name.endswith('.tar.gz'):
+                    download_url = asset.get('browser_download_url')
+                    if download_url:
+                        print(f"动态获取成功: {download_url}")
+                        return download_url
+    except Exception as e:
+        print(f"API 获取失败 ({e})，将启用备用静态版本链接...")
+
+    # 策略 B：若 API 异常，回退使用 v2.2.5 稳定版直接链接
+    fallback_url = "https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareSpeedTest_linux_amd64.tar.gz"
+    print(f"启用备用静态链接: {fallback_url}")
+    return fallback_url
+
+# 1. 自动选择可用链接并下载测速工具
+print("正在初始化下载测速工具...")
+cf_url = get_download_url()
 try:
     download_file(cf_url, "cf.tar.gz")
     with tarfile.open("cf.tar.gz", "r:gz") as tar:
         tar.extractall()
     os.chmod("CloudflareSpeedTest", 0o755)
 except Exception as e:
-    print(f"下载或解压失败: {e}")
+    print(f"测速工具下载或解压失败: {e}")
     sys.exit(1)
 
 # 2. 写入大厂、企业级及跨国公司专属的 Cloudflare 优质 IP 段
