@@ -44,7 +44,6 @@ def get_download_url():
             assets = res_data.get('assets', [])
             for asset in assets:
                 asset_name = asset.get('name', '')
-                # 同时匹配新版 'cfst' 和旧版 'CloudflareSpeedTest' 的 Linux 压缩包
                 if ('cfst' in asset_name or 'CloudflareSpeedTest' in asset_name) and 'linux' in asset_name and 'amd64' in asset_name and asset_name.endswith('.tar.gz'):
                     download_url = asset.get('browser_download_url')
                     if download_url:
@@ -81,8 +80,8 @@ except Exception as e:
     print(f"测速工具下载或解压失败: {e}")
     sys.exit(1)
 
-# 2. 写入大厂、企业级及跨国公司专属的 Cloudflare 优质 IP 段
-print("正在配置大厂/企业级专属 IP 段...")
+# 2. 配置并合并 IP 列表（普通 IP + 大厂专属 IP）
+print("正在配置 IP 列表...")
 PREMIUM_CIDRS = [
     "104.16.0.0/13",    # Cloudflare Enterprise & Business 核心大厂段
     "104.24.0.0/14",    # 商业与企业级合作伙伴段
@@ -92,20 +91,40 @@ PREMIUM_CIDRS = [
     "198.41.128.0/17"   # 核心企业客户与高可靠性路由段
 ]
 
+official_ip_url = "https://raw.githubusercontent.com/XIU2/CloudflareSpeedTest/master/ip.txt"
 try:
+    print("正在下载公开普通 IP 库...")
+    download_file(official_ip_url, "ip_temp.txt")
+    
+    # 合并、去重
+    all_ips = set()
+    with open("ip_temp.txt", "r", encoding="utf-8") as f_temp:
+        for line in f_temp:
+            ip_line = line.strip()
+            if ip_line and not ip_line.startswith("#"):
+                all_ips.add(ip_line)
+                
+    # 加入大厂优质段
+    for cidr in PREMIUM_CIDRS:
+        all_ips.add(cidr)
+        
+    with open("ip.txt", "w", encoding="utf-8") as f_final:
+        f_final.write("\n".join(sorted(list(all_ips))))
+        
+    print(f"IP 库配置完成：已成功合并普通 IP 与大厂专属 IP，共计 {len(all_ips)} 个网段。")
+    if os.path.exists("ip_temp.txt"):
+        os.remove("ip_temp.txt")
+except Exception as e:
+    print(f"普通 IP 库下载或合并失败 ({e})，将仅使用大厂专属 IP 段作为备份...")
     with open("ip.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(PREMIUM_CIDRS))
-    print(f"成功导入 {len(PREMIUM_CIDRS)} 个企业级 IP 段进行测速。")
-except Exception as e:
-    print(f"写入 IP 配置文件失败: {e}")
-    sys.exit(1)
 
 # 3. 运行测速
 # -f ip.txt: 指定输入的 IP 段文件
 # -n 500: 延迟测速线程数
 # -dn 150: 对延迟最低的前 150 个 IP 进行实际下载测速
 # -dt 5: 测速时间 5 秒
-print("开始进行企业级 IP 测速...")
+print("开始进行 IP 测速（普通与大厂混合测试）...")
 os.system(f"./{binary_name} -f ip.txt -n 500 -dn 150 -dt 5 -o result.csv")
 
 # 4. 定义国家/地区及其对应的 Cloudflare 节点三字码 (Colo)
@@ -175,7 +194,7 @@ with open("result.csv", mode='r', encoding='utf-8') as f:
 
 # 6. 格式化输出文件（包括汇总文件和单独分类文件）
 combined_lines = []
-combined_lines.append("# Cloudflare 大厂/企业级优质 IP 列表 (汇总)")
+combined_lines.append("# Cloudflare 优选 IP 列表 (合并普通与大厂 IP - 汇总)")
 combined_lines.append("# 测速数据基于 GitHub Actions 运行环境，由于网络环境差异，数据仅供参考\n")
 
 for country, ips in sorted(categorized.items()):
@@ -201,7 +220,7 @@ for country, ips in sorted(categorized.items()):
     combined_lines.append(f"=== {country} (Top 20) ===")
 
     if not sorted_ips:
-        no_ip_msg = "未在此次测速中匹配到该地区的大厂节点。\n"
+        no_ip_msg = "未在此次测速中匹配到该地区的节点。\n"
         combined_lines.append(no_ip_msg)
         country_file_lines.append(no_ip_msg)
     else:
