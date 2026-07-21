@@ -55,16 +55,13 @@ def get_download_url():
     print(f"启用备用静态链接: {fallback_url}")
     return fallback_url
 
-# 使用 DoH + EDNS (ECS) 技术动态获取特定地区最优质的 Cloudflare Anycast IP
-# 这种方法可以直接绕过 GitHub 运行机的地理限制，获取真正属于该地区的 IP
+# 使用 DoH + EDNS 技术动态获取特定地区最优质的 Cloudflare Anycast IP
 def get_regional_ips_via_dns(country_code, subnet):
     print(f"正在通过 EDNS 技术为 [{country_code}] 获取定制 Anycast IP...")
-    # 解析使用 Cloudflare CDN 的几个全球主流大厂/高优先级域名
     domains = ["dash.cloudflare.com", "zoom.us", "canva.com", "discord.com", "shopify.com"]
     ips = set()
     
     for domain in domains:
-        # 使用 Google DoH 服务，附加 edns_client_subnet 模拟目标国家网络
         url = f"https://dns.google/resolve?name={domain}&type=A&edns_client_subnet={subnet}"
         req = urllib.request.Request(
             url,
@@ -119,10 +116,8 @@ REGIONS = {
     'US': {'name': '美国 (United States)', 'subnet': '8.8.8.0/24', 'file': 'US.txt'}       # 美国谷歌
 }
 
+# 存放所有国家优选 IP 的列表，格式为 "IP tag"
 combined_lines = []
-combined_lines.append("# Cloudflare 优选 IP 列表 (独立测速汇总)")
-combined_lines.append("# 本列表使用 DoH + EDNS 模拟本地区网络获取专属 Anycast 节点")
-combined_lines.append("# 测速数据基于 GitHub Actions 运行环境，仅供参考\n")
 
 # 3. 循环针对每个地区获取专属 IP、测速和结果提取
 for key, region in REGIONS.items():
@@ -171,20 +166,18 @@ for key, region in REGIONS.items():
         except Exception as e:
             print(f"读取或解析 {csv_file} 失败: {e}")
             
-    # 4. 生成该地区的独立 TXT 文件
+    # 4. 生成该地区的独立 TXT 文件（纯净 IP 格式）
     country_file_lines = []
-    country_file_lines.append(f"# Cloudflare 优选 IP - {region['name']}")
-    country_file_lines.append("# 格式: IP:端口 - 延迟 - 速度 - 节点\n")
-    
-    combined_lines.append(f"=== {region['name']} (Top 20) ===")
     
     if not ips:
         # 如果测速结果为空，直接将解析到的原始 IP 作为可用节点写入（保底机制）
-        print(f"提示：[{region['name']}] 测速结果在 Actions 机器上超时，启用保底机制直接写入原始解析 IP。")
+        print(f"提示：[{region['name']}] 测速在 Actions 上超时，启用保底机制写入原始 IP。")
         for idx, ip_addr in enumerate(regional_ips[:20], 1):
-            line = f"{ip_addr}:443 - 延迟: N/A - 速度: N/A - 节点: {key} (DNS解析)"
-            combined_lines.append(line)
+            # 格式：ip 国家标签_序号（全部小写，无端口号）
+            tag = f"{key.lower()}{idx}"
+            line = f"{ip_addr} {tag}"
             country_file_lines.append(line)
+            combined_lines.append(line)
     else:
         # 按照速度从大到小，延迟从小到大排序
         def sort_key(x):
@@ -200,14 +193,13 @@ for key, region in REGIONS.items():
             
         sorted_ips = sorted(ips, key=sort_key, reverse=True)[:20]
         
-        for item in sorted_ips:
-            line = f"{item['ip']}:{item['port']} - 延迟: {item['latency']}ms - 速度: {item['speed']} MB/s - 节点: {item['colo']}"
-            combined_lines.append(line)
+        for idx, item in enumerate(sorted_ips, 1):
+            tag = f"{key.lower()}{idx}"
+            line = f"{item['ip']} {tag}"
             country_file_lines.append(line)
-            
-    combined_lines.append("") # 汇总文件地区间隔
+            combined_lines.append(line)
 
-    # 写入单个地区的独立 txt 文件
+    # 写入单个地区的独立 txt 文件（纯净版）
     try:
         with open(region['file'], "w", encoding="utf-8") as f_sub:
             f_sub.write("\n".join(country_file_lines))
@@ -215,7 +207,7 @@ for key, region in REGIONS.items():
     except Exception as e:
         print(f"写入单地区文件 {region['file']} 失败: {e}")
 
-# 5. 写入汇总文件
+# 5. 写入汇总文件（包含所有国家和地区）
 try:
     with open("cloudflare_ips.txt", "w", encoding="utf-8") as f_all:
         f_all.write("\n".join(combined_lines))
