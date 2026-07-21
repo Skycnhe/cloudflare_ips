@@ -1,0 +1,40 @@
+name: Cloudflare Auto Optimize IPs
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'  # 每 3 小时自动运行一次
+  workflow_dispatch:       # 允许手动触发运行
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # 允许工作流向仓库提交代码
+
+    steps:
+    - name: 检出仓库代码
+      uses: actions/checkout@v4
+
+    - name: 设置 Python 环境
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 执行优选与分类脚本
+      run: python optimize.py
+
+    - name: 提交并推送更新的 IP 列表
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        # 将所有生成的 txt 文件加入暂存区
+        git add *.txt
+        
+        # 仅在文件内容发生变化时才提交
+        if ! git diff --cached --quiet; then
+          git commit -m "自动更新 Cloudflare 分类优选 IP 列表 [skip ci]"
+          git push
+        else
+          echo "IP 列表未发生实质变化，无需更新。"
+        fi
