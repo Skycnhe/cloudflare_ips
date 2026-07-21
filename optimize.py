@@ -166,7 +166,7 @@ for key, region in REGIONS.items():
         except Exception as e:
             print(f"读取或解析 {csv_file} 失败: {e}")
             
-    # 4. 生成该地区的独立 TXT 文件（纯净 IP 格式）
+    # 4. 生成该地区的独立 TXT 文件（纯净 IP 格式，无端口号）
     country_file_lines = []
     
     if not ips:
