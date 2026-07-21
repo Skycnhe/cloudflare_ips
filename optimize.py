@@ -44,7 +44,8 @@ def get_download_url():
             assets = res_data.get('assets', [])
             for asset in assets:
                 asset_name = asset.get('name', '')
-                if 'linux' in asset_name and 'amd64' in asset_name and asset_name.endswith('.tar.gz'):
+                # 同时匹配新版 'cfst' 和旧版 'CloudflareSpeedTest' 的 Linux 压缩包
+                if ('cfst' in asset_name or 'CloudflareSpeedTest' in asset_name) and 'linux' in asset_name and 'amd64' in asset_name and asset_name.endswith('.tar.gz'):
                     download_url = asset.get('browser_download_url')
                     if download_url:
                         print(f"动态获取成功: {download_url}")
@@ -64,7 +65,18 @@ try:
     download_file(cf_url, "cf.tar.gz")
     with tarfile.open("cf.tar.gz", "r:gz") as tar:
         tar.extractall()
-    os.chmod("CloudflareSpeedTest", 0o755)
+    
+    # 动态检测解压出来的程序名称（兼容新版 cfst 和旧版 CloudflareSpeedTest）
+    if os.path.exists("cfst"):
+        binary_name = "cfst"
+    elif os.path.exists("CloudflareSpeedTest"):
+        binary_name = "CloudflareSpeedTest"
+    else:
+        print("错误：未在解压目录中找到测速可执行程序。")
+        sys.exit(1)
+        
+    print(f"检测到测速程序文件名为: {binary_name}")
+    os.chmod(binary_name, 0o755)
 except Exception as e:
     print(f"测速工具下载或解压失败: {e}")
     sys.exit(1)
@@ -94,7 +106,7 @@ except Exception as e:
 # -dn 150: 对延迟最低的前 150 个 IP 进行实际下载测速
 # -dt 5: 测速时间 5 秒
 print("开始进行企业级 IP 测速...")
-os.system("./CloudflareSpeedTest -f ip.txt -n 500 -dn 150 -dt 5 -o result.csv")
+os.system(f"./{binary_name} -f ip.txt -n 500 -dn 150 -dt 5 -o result.csv")
 
 # 4. 定义国家/地区及其对应的 Cloudflare 节点三字码 (Colo)
 COLO_MAP = {
