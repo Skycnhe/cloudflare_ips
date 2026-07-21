@@ -105,18 +105,18 @@ except Exception as e:
     print(f"测速工具下载或解压失败: {e}")
     sys.exit(1)
 
-# 2. 定义各个目标国家/地区、对应的真实运营商子网段（ECS）及文件名
+# 2. 定义各个目标国家/地区、对应的真实运营商子网段（ECS）及中文简称和文件名
 REGIONS = {
-    'HK': {'name': '香港 (Hong Kong)', 'subnet': '203.198.23.0/24', 'file': 'HK.txt'},      # 香港电讯
-    'JP': {'name': '日本 (Japan)', 'subnet': '210.140.10.0/24', 'file': 'JP.txt'},         # 日本软银
-    'TW': {'name': '台湾 (Taiwan)', 'subnet': '168.95.1.0/24', 'file': 'TW.txt'},          # 台湾中华电信
-    'SG': {'name': '新加坡 (Singapore)', 'subnet': '165.21.83.0/24', 'file': 'SG.txt'},      # 新加坡电信
-    'KR': {'name': '韩国 (South Korea)', 'subnet': '168.126.63.0/24', 'file': 'KR.txt'},    # 韩国电信
-    'TH': {'name': '泰国 (Thailand)', 'subnet': '203.155.33.0/24', 'file': 'TH.txt'},      # 泰国电信
-    'US': {'name': '美国 (United States)', 'subnet': '8.8.8.0/24', 'file': 'US.txt'}       # 美国谷歌
+    'HK': {'name': '香港 (Hong Kong)', 'zh': '香港', 'subnet': '203.198.23.0/24', 'file': 'HK.txt'},      # 香港电讯
+    'JP': {'name': '日本 (Japan)', 'zh': '日本', 'subnet': '210.140.10.0/24', 'file': 'JP.txt'},         # 日本软银
+    'TW': {'name': '台湾 (Taiwan)', 'zh': '台湾', 'subnet': '168.95.1.0/24', 'file': 'TW.txt'},          # 台湾中华电信
+    'SG': {'name': '新加坡 (Singapore)', 'zh': '新加坡', 'subnet': '165.21.83.0/24', 'file': 'SG.txt'},      # 新加坡电信
+    'KR': {'name': '韩国 (South Korea)', 'zh': '韩国', 'subnet': '168.126.63.0/24', 'file': 'KR.txt'},    # 韩国电信
+    'TH': {'name': '泰国 (Thailand)', 'zh': '泰国', 'subnet': '203.155.33.0/24', 'file': 'TH.txt'},      # 泰国电信
+    'US': {'name': '美国 (United States)', 'zh': '美国', 'subnet': '8.8.8.0/24', 'file': 'US.txt'}       # 美国谷歌
 }
 
-# 存放所有国家优选 IP 的列表，格式为 "IP tag"
+# 存放所有国家优选 IP 的列表，格式为 "IP#tag"
 combined_lines = []
 
 # 3. 循环针对每个地区获取专属 IP、测速和结果提取
@@ -166,16 +166,15 @@ for key, region in REGIONS.items():
         except Exception as e:
             print(f"读取或解析 {csv_file} 失败: {e}")
             
-    # 4. 生成该地区的独立 TXT 文件（纯净 IP 格式，无端口号）
+    # 4. 生成该地区的独立 TXT 文件（自定义节点命名格式）
     country_file_lines = []
     
     if not ips:
         # 如果测速结果为空，直接将解析到的原始 IP 作为可用节点写入（保底机制）
         print(f"提示：[{region['name']}] 测速在 Actions 上超时，启用保底机制写入原始 IP。")
         for idx, ip_addr in enumerate(regional_ips[:20], 1):
-            # 格式：ip 国家标签_序号（全部小写，无端口号）
-            tag = f"{key.lower()}{idx}"
-            line = f"{ip_addr} {tag}"
+            # 格式：IP#小写标签序号 【中文国家名】 大写国家代码
+            line = f"{ip_addr}#{key.lower()}{idx} 【{region['zh']}】 {key}"
             country_file_lines.append(line)
             combined_lines.append(line)
     else:
@@ -194,8 +193,8 @@ for key, region in REGIONS.items():
         sorted_ips = sorted(ips, key=sort_key, reverse=True)[:20]
         
         for idx, item in enumerate(sorted_ips, 1):
-            tag = f"{key.lower()}{idx}"
-            line = f"{item['ip']} {tag}"
+            # 格式：IP#小写标签序号 【中文国家名】 大写国家代码
+            line = f"{item['ip']}#{key.lower()}{idx} 【{region['zh']}】 {key}"
             country_file_lines.append(line)
             combined_lines.append(line)
 
