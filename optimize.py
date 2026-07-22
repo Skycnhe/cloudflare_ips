@@ -4,6 +4,8 @@ import tarfile
 import urllib.request
 import csv
 import json
+import ipaddress
+import random
 
 # 带 User-Agent 的安全下载函数
 def download_file(url, filename):
@@ -83,6 +85,46 @@ def get_regional_ips_via_dns(country_code, subnet):
     print(f"[{country_code}] 解析完成，获取到 {len(result_list)} 个专属 IP 节点。")
     return result_list
 
+# === Cloudflare 官方公布的全量 IPv4 地址段 ===
+# 包含了全球所有的公开 CDN/Anycast 节点
+PREMIUM_CIDRS = [
+    "104.16.0.0/13",      # 核心段 1 (涵盖 104.16.x.x - 104.23.x.x)
+    "104.24.0.0/14",      # 核心段 2 (涵盖 104.24.x.x - 104.27.x.x)
+    "172.64.0.0/13",      # 核心加速路由段 (涵盖 172.64.x.x - 172.71.x.x)
+    "162.158.0.0/15",     # 核心 CDN 分发网段 (涵盖 162.158.x.x - 162.159.x.x，包含特殊伙伴段)
+    "108.162.192.0/18",   # 企业高防与特定大客户加速段
+    "198.41.128.0/17",    # 核心骨干网与优质大厂段
+    "173.245.48.0/20",    # 核心 Anycast 网段
+    "103.21.244.0/22",    # 亚太方向常态优化网段
+    "103.22.200.0/22",    # 亚太地区高连通性网段
+    "103.31.4.0/22",      # 亚太及全球骨干连接段
+    "141.101.64.0/18",    # 欧洲与全球 Anycast 核心段
+    "190.93.240.0/20",    # 美洲与防 Ddos 核心保护段
+    "188.114.96.0/20",    # 欧洲高连通性核心加速网段
+    "197.234.240.0/22",   # 核心 Anycast 备用段
+    "131.0.72.0/22"       # 全球骨干网互联段
+]
+
+# 从 CF 全量官方网段中随机抽样 IP，增加候选集的多样性
+def sample_ips_from_cf_cidrs(count=75):
+    print("正在从 CF 全量官方网段中随机抽样候选 IP...")
+    sampled = set()
+    for cidr in PREMIUM_CIDRS:
+        try:
+            net = ipaddress.ip_network(cidr)
+            # 计算每个网段需要抽取的数量
+            num_to_pick = min(count // len(PREMIUM_CIDRS), net.num_addresses)
+            if num_to_pick > 0:
+                for _ in range(num_to_pick):
+                    # 避免选择网段的网络地址和广播地址
+                    rand_idx = random.randint(1, net.num_addresses - 2)
+                    sampled.add(str(net[rand_idx]))
+        except Exception as e:
+            print(f"抽样网段 {cidr} 发生错误: {e}")
+    result_list = list(sampled)
+    print(f"成功抽样出 {len(result_list)} 个 CF 官方大厂 IP。")
+    return result_list
+
 # 1. 下载并解压测速工具
 print("正在初始化下载测速工具...")
 cf_url = get_download_url()
@@ -116,7 +158,7 @@ REGIONS = {
     'US': {'name': '美国 (United States)', 'zh': '美国', 'subnet': '8.8.8.0/24', 'file': 'US.txt'}       # 美国谷歌
 }
 
-# 存放所有国家优选 IP 的列表，格式为 "IP#tag"
+# 存放所有国家优选 IP 的列表，格式为 "IP#tag 【中文】 大写"
 combined_lines = []
 
 # 3. 循环针对每个地区获取专属 IP、测速和结果提取
@@ -124,21 +166,24 @@ for key, region in REGIONS.items():
     print(f"\n==========================================")
     print(f"正在处理目标地区: {region['name']}")
     
-    # 获取此地区专用的 Anycast IP
+    # 获取此地区专用的 Anycast IP (引擎一：DNS 定位)
     regional_ips = get_regional_ips_via_dns(key, region['subnet'])
     
-    if not regional_ips:
-        print(f"警告：未能获取到 [{region['name']}] 的专属 IP，跳过此地区测速。")
-        continue
+    # 从 CF 官方网段中抽样 IP (引擎二：全量官方网段)
+    cf_segment_ips = sample_ips_from_cf_cidrs(count=75)
+    
+    # 融合成综合测试候选集并去重
+    candidate_ips = list(set(regional_ips + cf_segment_ips))
+    print(f"混合测试池构建完成，合并去重后共计 {len(candidate_ips)} 个候选 IP。")
         
     # 写入临时的特定地区待测 IP 文件
     temp_ip_file = f"ips_{key}.txt"
     with open(temp_ip_file, "w", encoding="utf-8") as f_temp:
-        f_temp.write("\n".join(regional_ips))
+        f_temp.write("\n".join(candidate_ips))
         
     csv_file = f"result_{key}.csv"
-    # 直接对已经针对该地区优化过的 IP 列表进行测速
-    cmd = f"./{binary_name} -f {temp_ip_file} -n 100 -dn 10 -dt 4 -o {csv_file}"
+    # 对混合候选集进行测速
+    cmd = f"./{binary_name} -f {temp_ip_file} -n 100 -dn 12 -dt 4 -o {csv_file}"
     print(f"开始测速...")
     os.system(cmd)
     
@@ -166,14 +211,13 @@ for key, region in REGIONS.items():
         except Exception as e:
             print(f"读取或解析 {csv_file} 失败: {e}")
             
-    # 4. 生成该地区的独立 TXT 文件（自定义节点命名格式）
+    # 4. 生成该地区的独立 TXT 文件（格式化输出）
     country_file_lines = []
     
     if not ips:
         # 如果测速结果为空，直接将解析到的原始 IP 作为可用节点写入（保底机制）
         print(f"提示：[{region['name']}] 测速在 Actions 上超时，启用保底机制写入原始 IP。")
         for idx, ip_addr in enumerate(regional_ips[:20], 1):
-            # 格式：IP#小写标签序号 【中文国家名】 大写国家代码
             line = f"{ip_addr}#{key.lower()}{idx} 【{region['zh']}】 {key}"
             country_file_lines.append(line)
             combined_lines.append(line)
@@ -193,7 +237,6 @@ for key, region in REGIONS.items():
         sorted_ips = sorted(ips, key=sort_key, reverse=True)[:20]
         
         for idx, item in enumerate(sorted_ips, 1):
-            # 格式：IP#小写标签序号 【中文国家名】 大写国家代码
             line = f"{item['ip']}#{key.lower()}{idx} 【{region['zh']}】 {key}"
             country_file_lines.append(line)
             combined_lines.append(line)
