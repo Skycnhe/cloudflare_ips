@@ -86,12 +86,11 @@ def get_regional_ips_via_dns(country_code, subnet):
     return result_list
 
 # === Cloudflare 官方公布的全量 IPv4 地址段 ===
-# 包含了全球所有的公开 CDN/Anycast 节点
 PREMIUM_CIDRS = [
-    "104.16.0.0/13",      # 核心段 1 (涵盖 104.16.x.x - 104.23.x.x)
-    "104.24.0.0/14",      # 核心段 2 (涵盖 104.24.x.x - 104.27.x.x)
-    "172.64.0.0/13",      # 核心加速路由段 (涵盖 172.64.x.x - 172.71.x.x)
-    "162.158.0.0/15",     # 核心 CDN 分发网段 (涵盖 162.158.x.x - 162.159.x.x，包含特殊伙伴段)
+    "104.16.0.0/13",      # 核心段 1
+    "104.24.0.0/14",      # 核心段 2
+    "172.64.0.0/13",      # 核心加速路由段
+    "162.158.0.0/15",     # 核心 CDN 分发网段
     "108.162.192.0/18",   # 企业高防与特定大客户加速段
     "198.41.128.0/17",    # 核心骨干网与优质大厂段
     "173.245.48.0/20",    # 核心 Anycast 网段
@@ -112,11 +111,9 @@ def sample_ips_from_cf_cidrs(count=75):
     for cidr in PREMIUM_CIDRS:
         try:
             net = ipaddress.ip_network(cidr)
-            # 计算每个网段需要抽取的数量
             num_to_pick = min(count // len(PREMIUM_CIDRS), net.num_addresses)
             if num_to_pick > 0:
                 for _ in range(num_to_pick):
-                    # 避免选择网段的网络地址和广播地址
                     rand_idx = random.randint(1, net.num_addresses - 2)
                     sampled.add(str(net[rand_idx]))
         except Exception as e:
@@ -182,8 +179,8 @@ for key, region in REGIONS.items():
         f_temp.write("\n".join(candidate_ips))
         
     csv_file = f"result_{key}.csv"
-    # 对混合候选集进行测速
-    cmd = f"./{binary_name} -f {temp_ip_file} -n 100 -dn 12 -dt 4 -o {csv_file}"
+    # 对混合候选集进行测速，-dn 20 保证完整测试前20个节点
+    cmd = f"./{binary_name} -f {temp_ip_file} -n 100 -dn 20 -dt 4 -o {csv_file}"
     print(f"开始测速...")
     os.system(cmd)
     
