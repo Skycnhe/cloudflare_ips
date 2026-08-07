@@ -63,19 +63,23 @@ def extract_and_verify(archive_path, target_dir):
     files_in_dir = os.listdir(target_dir)
     print("解压目录中的文件列表:", files_in_dir)
 
-    # 1. 精确匹配默认文件名
-    target_executable = "CloudflareSpeedTest"
+    # 1. 尝试匹配已知的默认文件名
+    possible_names = ["cfst_linux_amd64", "CloudflareSpeedTest"]
     matched_file = None
 
-    if target_executable in files_in_dir:
-        matched_file = target_executable
-    else:
-        # 2. 模糊匹配（防备后续官方调整文件名）
+    for name in possible_names:
+        if name in files_in_dir:
+            matched_file = name
+            break
+
+    # 2. 如果没有精确匹配，采用模糊匹配（防备后续官方再次调整文件名）
+    if not matched_file:
         for file in files_in_dir:
             file_lower = file.lower()
-            if "cloudflare" in file_lower or "speedtest" in file_lower:
+            # 增加对 "cfst" 缩写的匹配支持
+            if "cloudflare" in file_lower or "speedtest" in file_lower or "cfst" in file_lower:
                 # 排除非执行文件
-                if not file.endswith(('.tar.gz', '.txt', '.md', '.csv')):
+                if not file.endswith(('.tar.gz', '.txt', '.md', '.csv', '.py')):
                     matched_file = file
                     break
 
